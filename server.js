@@ -1,63 +1,97 @@
-// Local / traditional-hosting entrypoint (Railway, Render, a VPS, your own
-// machine, etc). Starts a real long-running HTTP server with Socket.IO.
-// For Vercel serverless, see api/index.js instead — Vercel functions don't
-// support persistent connections, so Socket.IO only runs here.
-import http from 'http';
+// The Express app itself — no app.listen() here. This file is imported by
+// both server.js (local/traditional hosting) and api/index.js (Vercel
+// serverless), so the same app runs identically in either environment.
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 
-import { configureDNS } from './config/dns.js';
-import { env, validateEnv } from './config/env.js';
+import { env } from './config/env.js';
 import { connectDB } from './config/db.js';
-import { initSocket } from './services/socketService.js';
-import app from './app.js';
+import { errorHandler, notFound } from './middleware/errorMiddleware.js';
 
-// Fail fast and loud at boot if required env vars are missing — this is a
-// long-running process, so exiting here (once, before accepting any
-// traffic) is the correct behavior, unlike inside a serverless function.
-try {
-  validateEnv();
-} catch (err) {
-  console.error(`❌ ${err.message}`);
-  process.exit(1);
-}
+import authRoutes from './routes/authRoutes.js';
+import productRoutes from './routes/productRoutes.js';
+import categoryRoutes from './routes/categoryRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import couponRoutes from './routes/couponRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 
-configureDNS();
+const app = express();
 
-const httpServer = http.createServer(app);
-initSocket(httpServer);
+// --- Security & core middleware ---
+app.use(helmet());
+app.use(
+  cors({
+    // Comma-separated CLIENT_URL supports both a Vercel preview URL and a
+    // production domain at once, e.g. "https://myapp.vercel.app,https://mystore.com"
+    origin: env.clientUrl.split(',').map((u) => u.trim()),
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+if (env.nodeEnv !== 'production') app.use(morgan('dev'));
 
-async function start() {
+// Ensures a MongoDB connection exists before any route runs. connectDB()
+// caches its connection/promise (see config/db.js), so on a normal
+// long-running server this resolves instantly after the first call made in
+// server.js at startup; on Vercel serverless it lazily connects on each
+// cold start and is a no-op on subsequent warm requests.
+app.use(async (req, res, next) => {
   try {
     await connectDB();
-    httpServer.listen(env.port, () => {
-      console.log(`🚀 Server running in ${env.nodeEnv} mode on port ${env.port}`);
-    });
+    next();
   } catch (err) {
-    console.error('❌ Failed to connect to the database at startup:', err.message);
-    process.exit(1);
+    res.status(503).json({ success: false, message: 'Database connection failed. Please try again shortly.' });
   }
-}
-
-start();
-
-// --- Process-level safety nets so unexpected errors never crash silently ---
-process.on('unhandledRejection', (err) => {
-  console.error('❌ Unhandled Rejection:', err?.message || err);
 });
 
-process.on('uncaughtException', (err) => {
-  console.error('❌ Uncaught Exception:', err.message);
-  // The process may be in an inconsistent state after a truly uncaught
-  // exception — exit and let your process manager (pm2, systemd, Docker,
-  // Railway/Render's restart policy, etc.) restart it cleanly.
-  process.exit(1);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api', apiLimiter);
+
+// --- Root — friendly response instead of a confusing 404 when someone
+// visits the bare backend URL in a browser. This is a JSON API only; the
+// actual app lives on the frontend URL, and real endpoints are under /api/*.
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Lumière API is running. This backend has no homepage — see /api/health for status, or use the frontend app.',
+  });
 });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Closing server gracefully...');
-  httpServer.close(() => process.exit(0));
+// --- Health check ---
+app.get('/api/health', (req, res) => {
+  res.json({ success: true, message: 'API is running', timestamp: new Date().toISOString() });
 });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received. Closing server gracefully...');
-  httpServer.close(() => process.exit(0));
-});
+// --- Routes ---
+app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/coupons', couponRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/upload', uploadRoutes);
+
+// Serves locally-uploaded images when running without Cloudinary configured
+// (local dev / traditional hosting fallback — see uploadMiddleware.js).
+// Harmless no-op if the "uploads" folder doesn't exist (e.g. on Vercel).
+app.use('/uploads', express.static('uploads'));
+
+// --- 404 + centralized error handling (must be last) ---
+app.use(notFound);
+app.use(errorHandler);
+
+export default app;
