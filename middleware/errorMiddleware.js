@@ -53,5 +53,14 @@ export function errorHandler(err, req, res, next) {
 }
 
 export function notFound(req, res, next) {
+  // Friendly response for the bare root URL instead of a confusing 404 —
+  // this endpoint isn't a real API route, just a sanity-check landing spot.
+  if (req.originalUrl === '/') {
+    return res.status(200).json({
+      success: true,
+      message: 'Backend API is live. Try /api/health for a full status check.',
+    });
+  }
+
   res.status(404).json({ success: false, message: `Route not found: ${req.originalUrl}` });
 }
