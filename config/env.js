@@ -25,7 +25,14 @@ export const env = {
   port: process.env.PORT || 5000,
   // Comma-separated list supported so both a local and a deployed frontend
   // origin can be allowed at once, e.g. "http://localhost:5173,https://mystore.vercel.app"
-  clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
+  // Trailing slashes are stripped from each entry — CORS does an exact string
+  // match against the browser's Origin header, which never has a trailing
+  // slash, so "https://x.vercel.app/" would otherwise silently fail to match.
+  clientUrl: (process.env.CLIENT_URL || 'http://localhost:5173')
+    .split(',')
+    .map((u) => u.trim().replace(/\/+$/, ''))
+    .filter(Boolean)
+    .join(','),
   mongoUri: process.env.MONGO_URI,
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
