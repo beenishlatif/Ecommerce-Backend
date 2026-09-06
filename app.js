@@ -20,6 +20,8 @@ import userRoutes from './routes/userRoutes.js';
 import couponRoutes from './routes/couponRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import settingRoutes from './routes/settingRoutes.js';
+// ... (existing imports ke sath yahan add karein)
 
 const app = express();
 
@@ -88,6 +90,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/settings', settingRoutes);
+// ... (existing app.use('/api/upload', uploadRoutes) ke bilkul baad add karein)
 
 // Serves locally-uploaded images when running without Cloudinary configured
 // (local dev / traditional hosting fallback — see uploadMiddleware.js).
