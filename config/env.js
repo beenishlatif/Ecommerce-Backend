@@ -1,43 +1,74 @@
-import dotenv from 'dotenv';
-dotenv.config();
+// Vercel serverless entrypoint. Vercel auto-detects any file under /api as a
+// serverless function — this one wraps the whole Express app, so every
+// /api/* route is handled by the same app.js used for local dev.
+//
+// CRASH SAFETY: this handler never lets a startup, config, or DB-connection
+// error escape unhandled. validateEnv() and configureDNS() run once per cold
+// start below — if either throws (e.g. a missing env var), or if
+// connectDB() fails (bad URI, network issue, IP not whitelisted, etc.), the
+// function still returns a clean JSON 500 instead of a raw platform crash
+// page. CORS headers are set manually in that case since a failure here
+// means we never reach app.js's own cors() middleware.
+import { configureDNS } from '../config/dns.js';
+import { validateEnv } from '../config/env.js';
+import app from '../app.js';
+import { connectDB } from '../config/db.js';
 
-const required = ['MONGO_URI', 'JWT_SECRET', 'ADMIN_EMAIL', 'ADMIN_PASSWORD'];
-
-// Throws instead of exiting the process. On a traditional/long-running
-// server (server.js) it's fine to exit on a thrown error at boot — but
-// process.exit() inside a Vercel serverless function kills the whole
-// function invocation and produces an ugly, un-catchable crash for every
-// request on that instance. So this module never calls process.exit()
-// itself; each entrypoint decides how to react.
-export function validateEnv() {
-  const missing = required.filter((key) => !process.env[key]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missing.join(', ')}. ` +
-        `Copy server/.env.example to server/.env locally, or set these in your hosting ` +
-        `provider's dashboard (e.g. Vercel → Project → Settings → Environment Variables).`
-    );
-  }
+let configError = null;
+try {
+  validateEnv();
+  configureDNS();
+} catch (err) {
+  // Logged once per cold start — visible in Vercel's function logs — but
+  // never thrown further, so module load always succeeds.
+  configError = err;
+  console.error('❌ Startup configuration error:', err.message);
 }
 
-export const env = {
-  nodeEnv: process.env.NODE_ENV || 'development',
-  port: process.env.PORT || 5000,
-  // Comma-separated list supported so both a local and a deployed frontend
-  // origin can be allowed at once, e.g. "http://localhost:5173,https://mystore.vercel.app"
-  // Trailing slashes are stripped from each entry — CORS does an exact string
-  // match against the browser's Origin header, which never has a trailing
-  // slash, so "https://x.vercel.app/" would otherwise silently fail to match.
-  clientUrl: (process.env.CLIENT_URL || 'http://localhost:5173')
-    .split(',')
-    .map((u) => u.trim().replace(/\/+$/, ''))
-    .filter(Boolean)
-    .join(','),
-  mongoUri: process.env.MONGO_URI,
-  jwtSecret: process.env.JWT_SECRET,
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  cookieName: process.env.COOKIE_NAME || 'token',
-  adminEmail: process.env.ADMIN_EMAIL,
-  adminPassword: process.env.ADMIN_PASSWORD,
-  adminName: process.env.ADMIN_NAME || 'Store Admin',
-};
+function sendFailureResponse(req, res, err, message) {
+  console.error('❌ Serverless handler error:', err?.message || err);
+
+  const rawClientUrl = process.env.CLIENT_URL || '';
+  const allowedOrigins = rawClientUrl.split(',').map((o) => o.trim()).filter(Boolean);
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  return res.status(500).json({ success: false, message });
+}
+
+export default async function handler(req, res) {
+  if (configError) {
+    return sendFailureResponse(
+      req,
+      res,
+      configError,
+      'Server is misconfigured (missing environment variables). Check your Vercel project ' +
+        'settings → Environment Variables, then redeploy.'
+    );
+  }
+
+  try {
+    await connectDB();
+  } catch (err) {
+    return sendFailureResponse(
+      req,
+      res,
+      err,
+      'Server is temporarily unavailable (database connection failed). Please try again shortly.'
+    );
+  }
+
+  try {
+    if (req.query?.path && !req.url.startsWith('/api')) {
+      const rawPath = Array.isArray(req.query.path) ? req.query.path.join('/') : req.query.path;
+      req.url = `/api/${rawPath}`;
+    }
+
+    return app(req, res);
+  } catch (err) {
+    return sendFailureResponse(req, res, err, 'Something went wrong on the server. Please try again shortly.');
+  }
+}
