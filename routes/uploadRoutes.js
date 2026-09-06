@@ -9,11 +9,6 @@ import { protect, authorize } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// On Vercel (serverless) without Cloudinary configured, uploads can never
-// persist — fail clearly and immediately instead of accepting a file that
-// will silently vanish. Locally / on traditional hosting without Cloudinary,
-// the local-disk fallback in uploadMiddleware.js is used instead, so this
-// only blocks the one combination that can never work.
 const guardUploadCapability = (req, res, next) => {
   if (!isCloudinaryConfigured() && process.env.VERCEL) {
     return res.status(503).json({
@@ -27,6 +22,7 @@ const guardUploadCapability = (req, res, next) => {
   next();
 };
 
+router.get('/ping-test-123', (req, res) => res.json({ success: true, message: 'fresh deploy confirmed' }));
 router.get('/gallery', protect, authorize('admin'), listGalleryImages);
 router.post('/', protect, authorize('admin'), guardUploadCapability, upload.single('image'), uploadSingleImage);
 router.post(
