@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
 import { emitInventoryChange } from '../services/socketService.js';
@@ -11,6 +12,27 @@ const SORT_MAP = {
   rating_desc: { ratingAverage: -1 },
 };
 
+// Given a category id, returns [that id, ...every descendant id at any depth]
+// using $graphLookup so nested subcategories (subcategory of a subcategory, etc.)
+// are all included when filtering products.
+async function withDescendantCategoryIds(categoryId) {
+  const result = await Category.aggregate([
+    { $match: { _id: new mongoose.Types.ObjectId(categoryId) } },
+    {
+      $graphLookup: {
+        from: 'categories',
+        startWith: '$_id',
+        connectFromField: '_id',
+        connectToField: 'parent',
+        as: 'descendants',
+      },
+    },
+  ]);
+
+  const descendants = result[0]?.descendants || [];
+  return [categoryId, ...descendants.map((d) => d._id.toString())];
+}
+
 // @route GET /api/products  (public) — list with search / filter / pagination
 export const getProducts = asyncHandler(async (req, res) => {
   const {
@@ -21,6 +43,8 @@ export const getProducts = asyncHandler(async (req, res) => {
     minPrice,
     maxPrice,
     colors,
+    sizes,
+    inStock,
     onSale,
     sort,
     page = 1,
@@ -31,11 +55,9 @@ export const getProducts = asyncHandler(async (req, res) => {
   if (search) filter.$text = { $search: search };
 
   if (category) {
-    // If the selected category has subcategories (e.g. "Women" with
-    // "Clothing", "Shoes & Heels", etc. underneath it), include products
-    // assigned to any of those subcategories too, not just the parent itself.
-    const children = await Category.find({ parent: category }).select('_id');
-    const categoryIds = [category, ...children.map((c) => c._id.toString())];
+    // Include products assigned to this category OR any of its subcategories,
+    // no matter how many levels deep (Women -> Clothing -> Stitched -> ...).
+    const categoryIds = await withDescendantCategoryIds(category);
     filter.category = categoryIds.length > 1 ? { $in: categoryIds } : category;
   }
 
@@ -51,6 +73,15 @@ export const getProducts = asyncHandler(async (req, res) => {
   if (colors) {
     const colorList = colors.split(',').map((c) => c.trim()).filter(Boolean);
     if (colorList.length > 0) filter.colors = { $in: colorList };
+  }
+
+  if (sizes) {
+    const sizeList = sizes.split(',').map((s) => s.trim()).filter(Boolean);
+    if (sizeList.length > 0) filter.sizes = { $in: sizeList };
+  }
+
+  if (inStock === 'true') {
+    filter.stock = { $gt: 0 };
   }
 
   if (onSale === 'true') {
