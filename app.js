@@ -19,8 +19,13 @@ import orderRoutes from './routes/orderRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import couponRoutes from './routes/couponRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js';
 
 const app = express();
+
+// Vercel/most PaaS run behind a reverse proxy — this makes express-rate-limit
+// and req.protocol/req.ip resolve correctly from X-Forwarded-* headers.
+app.set('trust proxy', 1);
 
 // --- Security & core middleware ---
 app.use(helmet());
@@ -59,6 +64,16 @@ const apiLimiter = rateLimit({
 });
 app.use('/api', apiLimiter);
 
+// --- Root — friendly response instead of a confusing 404 when someone
+// visits the bare backend URL in a browser. This is a JSON API only; the
+// actual app lives on the frontend URL, and real endpoints are under /api/*.
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Lumière API is running. This backend has no homepage — see /api/health for status, or use the frontend app.',
+  });
+});
+
 // --- Health check ---
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'API is running', timestamp: new Date().toISOString() });
@@ -72,6 +87,12 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/upload', uploadRoutes);
+
+// Serves locally-uploaded images when running without Cloudinary configured
+// (local dev / traditional hosting fallback — see uploadMiddleware.js).
+// Harmless no-op if the "uploads" folder doesn't exist (e.g. on Vercel).
+app.use('/uploads', express.static('uploads'));
 
 // --- 404 + centralized error handling (must be last) ---
 app.use(notFound);
