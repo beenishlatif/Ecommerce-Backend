@@ -1,29 +1,70 @@
 import Product from '../models/Product.js';
+import Category from '../models/Category.js';
 import { emitInventoryChange } from '../services/socketService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+const SORT_MAP = {
+  price_asc: { price: 1 },
+  price_desc: { price: -1 },
+  newest: { createdAt: -1 },
+  name_asc: { name: 1 },
+  rating_desc: { ratingAverage: -1 },
+};
+
 // @route GET /api/products  (public) — list with search / filter / pagination
 export const getProducts = asyncHandler(async (req, res) => {
-  const { search, category, featured, bestseller, minPrice, maxPrice, page = 1, limit = 12 } = req.query;
+  const {
+    search,
+    category,
+    featured,
+    bestseller,
+    minPrice,
+    maxPrice,
+    colors,
+    onSale,
+    sort,
+    page = 1,
+    limit = 12,
+  } = req.query;
 
   const filter = { status: 'active' };
   if (search) filter.$text = { $search: search };
-  if (category) filter.category = category;
+
+  if (category) {
+    // If the selected category has subcategories (e.g. "Women" with
+    // "Clothing", "Shoes & Heels", etc. underneath it), include products
+    // assigned to any of those subcategories too, not just the parent itself.
+    const children = await Category.find({ parent: category }).select('_id');
+    const categoryIds = [category, ...children.map((c) => c._id.toString())];
+    filter.category = categoryIds.length > 1 ? { $in: categoryIds } : category;
+  }
+
   if (featured) filter.featured = featured === 'true';
   if (bestseller) filter.bestseller = bestseller === 'true';
+
   if (minPrice || maxPrice) {
     filter.price = {};
     if (minPrice) filter.price.$gte = Number(minPrice);
     if (maxPrice) filter.price.$lte = Number(maxPrice);
   }
 
+  if (colors) {
+    const colorList = colors.split(',').map((c) => c.trim()).filter(Boolean);
+    if (colorList.length > 0) filter.colors = { $in: colorList };
+  }
+
+  if (onSale === 'true') {
+    filter.$expr = { $gt: ['$compareAtPrice', '$price'] };
+  }
+
   const pageNum = Math.max(1, Number(page));
   const limitNum = Math.min(50, Math.max(1, Number(limit)));
+  const sortOption = SORT_MAP[sort] || { createdAt: -1 };
 
   const [products, total] = await Promise.all([
     Product.find(filter)
       .populate('category', 'name slug')
-      .sort({ createdAt: -1 })
+      .sort(sortOption)
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum),
     Product.countDocuments(filter),
