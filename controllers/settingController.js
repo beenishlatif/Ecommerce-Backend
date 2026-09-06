@@ -12,7 +12,7 @@ export const getHomepageSettings = async (req, res) => {
 };
 
 // @desc    Update homepage settings (hero image) — admin only
-// @route   PUT /api/admin/settings/homepage
+// @route   PUT /api/settings/homepage
 export const updateHomepageSettings = async (req, res) => {
   try {
     const { heroImage } = req.body;
