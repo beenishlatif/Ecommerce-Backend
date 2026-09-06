@@ -9,6 +9,7 @@ const productSchema = new mongoose.Schema(
     price: { type: Number, required: true, min: 0 },
     compareAtPrice: { type: Number, default: 0 },
     stock: { type: Number, required: true, min: 0, default: 0 },
+    coverImage: { type: String, default: '' },
     images: [{ type: String }],
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
     status: { type: String, enum: ['active', 'draft', 'archived'], default: 'active' },
