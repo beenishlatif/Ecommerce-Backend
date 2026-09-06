@@ -1,8 +1,7 @@
-import mongoose from 'mongoose';
 import Product from '../models/Product.js';
-import Category from '../models/Category.js';
 import { emitInventoryChange } from '../services/socketService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { withDescendantCategoryIds } from '../utils/categoryTree.js';
 
 const SORT_MAP = {
   price_asc: { price: 1 },
@@ -11,27 +10,6 @@ const SORT_MAP = {
   name_asc: { name: 1 },
   rating_desc: { ratingAverage: -1 },
 };
-
-// Given a category id, returns [that id, ...every descendant id at any depth]
-// using $graphLookup so nested subcategories (subcategory of a subcategory, etc.)
-// are all included when filtering products.
-async function withDescendantCategoryIds(categoryId) {
-  const result = await Category.aggregate([
-    { $match: { _id: new mongoose.Types.ObjectId(categoryId) } },
-    {
-      $graphLookup: {
-        from: 'categories',
-        startWith: '$_id',
-        connectFromField: '_id',
-        connectToField: 'parent',
-        as: 'descendants',
-      },
-    },
-  ]);
-
-  const descendants = result[0]?.descendants || [];
-  return [categoryId, ...descendants.map((d) => d._id.toString())];
-}
 
 // @route GET /api/products  (public) — list with search / filter / pagination
 export const getProducts = asyncHandler(async (req, res) => {

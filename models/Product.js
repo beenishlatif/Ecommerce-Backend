@@ -36,6 +36,14 @@ const productSchema = new mongoose.Schema(
       default: '',
     },
 
+    // Sale campaign metadata. compareAtPrice doubles as "the price before the
+    // sale" — when a sale is applied, compareAtPrice stores the original
+    // price and `price` becomes the discounted price. saleDiscountPercent is
+    // kept alongside purely so the UI can show an exact "-30%" badge without
+    // re-deriving it (and risking rounding drift) from price/compareAtPrice.
+    saleDiscountPercent: { type: Number, default: 0, min: 0, max: 95 },
+    saleEndsAt: { type: Date, default: null },
+
     attributes: { type: Map, of: String, default: {} },
   },
   { timestamps: true }

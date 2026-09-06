@@ -21,6 +21,7 @@ import couponRoutes from './routes/couponRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 
+
 const app = express();
 
 // --- Security & core middleware ---

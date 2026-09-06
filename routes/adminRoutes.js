@@ -15,6 +15,13 @@ import { getCustomers, getUsers, setUserActive } from '../controllers/userContro
 import { getCoupons, createCoupon, updateCoupon, deleteCoupon } from '../controllers/couponController.js';
 import { getPayments, getPaymentById } from '../controllers/paymentController.js';
 import { getAdminReviews, moderateReview } from '../controllers/reviewController.js';
+import {
+  previewSale,
+  applySale,
+  removeSale,
+  getActiveSales,
+  expireEndedSales,
+} from '../controllers/saleController.js';
 
 const router = express.Router();
 
@@ -57,5 +64,13 @@ router.get('/payments/:id', getPaymentById);
 // Reviews
 router.get('/reviews', getAdminReviews);
 router.put('/reviews/:id/status', moderateReview);
+
+// Sale campaigns — apply/remove a percentage discount across specific
+// products, a whole category, or the entire catalog.
+router.get('/sales/active', getActiveSales);
+router.post('/sales/preview', previewSale);
+router.post('/sales/apply', applySale);
+router.post('/sales/remove', removeSale);
+router.post('/sales/expire-check', expireEndedSales);
 
 export default router;
