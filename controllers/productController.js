@@ -76,3 +76,11 @@ export const getAdminProducts = asyncHandler(async (req, res) => {
   const products = await Product.find().populate('category', 'name slug').sort({ createdAt: -1 });
   res.json({ success: true, data: products });
 });
+
+// @route GET /api/admin/products/:id (admin) — single product, any status,
+// used to populate the edit form efficiently instead of filtering the full list.
+export const getAdminProductById = asyncHandler(async (req, res) => {
+  const product = await Product.findById(req.params.id).populate('category', 'name slug');
+  if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+  res.json({ success: true, data: product });
+});

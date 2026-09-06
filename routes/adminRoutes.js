@@ -4,6 +4,7 @@ import { protect, authorize } from '../middleware/authMiddleware.js';
 import { getDashboardStats } from '../controllers/adminController.js';
 import {
   getAdminProducts,
+  getAdminProductById,
   createProduct,
   updateProduct,
   deleteProduct,
@@ -24,6 +25,7 @@ router.get('/dashboard', getDashboardStats);
 
 // Products
 router.get('/products', getAdminProducts);
+router.get('/products/:id', getAdminProductById);
 router.post('/products', createProduct);
 router.put('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
