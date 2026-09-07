@@ -33,3 +33,32 @@ export const authorize = (...roles) => (req, res, next) => {
   }
   next();
 };
+
+// Like `protect`, but never blocks the request. If a valid token is present,
+// req.user is attached (same as protect). If there's no token, or the token
+// is missing/expired/invalid, the request just continues as a guest with
+// req.user left undefined — routes using this decide for themselves what a
+// guest is allowed to do (e.g. place an order but not view someone else's).
+export const optionalAuth = asyncHandler(async (req, res, next) => {
+  let token = req.cookies?.[env.cookieName];
+
+  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, env.jwtSecret);
+    const user = await User.findById(decoded.id);
+    if (user && user.isActive) {
+      req.user = user;
+    }
+  } catch {
+    // Invalid or expired token — proceed as guest rather than failing the request.
+  }
+
+  next();
+});

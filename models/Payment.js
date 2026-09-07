@@ -3,10 +3,10 @@ import mongoose from 'mongoose';
 const paymentSchema = new mongoose.Schema(
   {
     order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // null for guest orders
     method: {
       type: String,
-      enum: ['cod', 'jazzcash', 'easypaisa', 'debit_card'],
+      enum: ['cod', 'jazzcash'],
       required: true,
     },
     amount: { type: Number, required: true, min: 0 },
