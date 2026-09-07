@@ -10,16 +10,12 @@ function generateOrderNumber() {
   return `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-// @route POST /api/orders (customer or guest — optionalAuth) — creates a real order, decrements stock
+// @route POST /api/orders (customer) — creates a real order, decrements stock
 export const createOrder = asyncHandler(async (req, res) => {
   const { items, shippingAddress, paymentMethod, couponCode } = req.body;
 
   if (!items?.length) {
     return res.status(400).json({ success: false, message: 'Order must include at least one item' });
-  }
-
-  if (!req.user && !shippingAddress?.email) {
-    return res.status(400).json({ success: false, message: 'Email is required for guest checkout' });
   }
 
   // Re-price server-side from the database — never trust client-sent prices
@@ -59,8 +55,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
-    user: req.user?._id || null,
-    guestEmail: req.user ? undefined : shippingAddress.email,
+    user: req.user._id,
     items: orderItems,
     shippingAddress,
     paymentMethod,
@@ -87,7 +82,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   await Payment.create({
     order: order._id,
-    user: req.user?._id || null,
+    user: req.user._id,
     method: paymentMethod,
     amount: total,
     status: paymentResult.status,
@@ -99,29 +94,19 @@ export const createOrder = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: order });
 });
 
-// @route GET /api/orders (customer, logged in only) — own orders
+// @route GET /api/orders (customer) — own orders
 export const getMyOrders = asyncHandler(async (req, res) => {
   const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
   res.json({ success: true, data: orders });
 });
 
-// @route GET /api/orders/:id (customer or guest — optionalAuth)
-// Logged-in users can only view their own orders (or any, if admin).
-// Guest orders (no `user` on the order) are viewable by anyone holding the
-// order ID/link — the unguessable Mongo ID is the access token, same as a
-// typical guest order-confirmation flow.
+// @route GET /api/orders/:id (customer, own order only)
 export const getOrderById = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-
-  const isGuestOrder = !order.user;
-  const isOwner = req.user && String(order.user) === String(req.user._id);
-  const isAdmin = req.user?.role === 'admin';
-
-  if (!isGuestOrder && !isOwner && !isAdmin) {
+  if (String(order.user) !== String(req.user._id) && req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: 'Not authorized to view this order' });
   }
-
   res.json({ success: true, data: order });
 });
 
