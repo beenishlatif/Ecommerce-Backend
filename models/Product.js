@@ -10,6 +10,10 @@ const productSchema = new mongoose.Schema(
     sku: { type: String, required: true, unique: true, trim: true },
     price: { type: Number, required: true, min: 0 },
     compareAtPrice: { type: Number, default: 0 },
+    // Overall stock — kept as the single source of truth for filtering
+    // (e.g. the "In Stock Only" filter). When a product uses per-size
+    // stock (sizeStock below), the frontend keeps this in sync as the sum
+    // of all size quantities, so nothing else in the backend needs to change.
     stock: { type: Number, required: true, min: 0, default: 0 },
     coverImage: { type: String, default: '' },
     images: [{ type: String }],
@@ -29,6 +33,14 @@ const productSchema = new mongoose.Schema(
     fabricType: { type: String, enum: ['Stitched', 'Unstitched', ''], default: '' }, // dress only
     material: { type: String, default: '' }, // fabric/leather/metal etc — used by all types
     sizes: [{ type: String }], // clothing sizes (XS-XXL) or shoe sizes (36-45)
+    // Per-size inventory — used for Stitched dresses and shoes, where each
+    // size needs its own stock count instead of one shared number.
+    sizeStock: [
+      {
+        size: { type: String, required: true },
+        stock: { type: Number, required: true, min: 0, default: 0 },
+      },
+    ],
     colors: [{ type: String }],
     jewelrySize: {
       type: String,
