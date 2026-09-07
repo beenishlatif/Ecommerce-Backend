@@ -10,12 +10,15 @@ function generateOrderNumber() {
   return `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
-// @route POST /api/orders (customer) — creates a real order, decrements stock
+// @route POST /api/orders (customer or guest) — creates a real order, decrements stock
 export const createOrder = asyncHandler(async (req, res) => {
   const { items, shippingAddress, paymentMethod, couponCode } = req.body;
 
   if (!items?.length) {
     return res.status(400).json({ success: false, message: 'Order must include at least one item' });
+  }
+  if (!req.user && !shippingAddress?.email) {
+    return res.status(400).json({ success: false, message: 'Email is required to place a guest order' });
   }
 
   // Re-price server-side from the database — never trust client-sent prices
@@ -50,12 +53,13 @@ export const createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  const shippingFee = subtotal > 5000 ? 0 : 200; // simple placeholder shipping rule
+  const shippingFee = subtotal >= 10000 ? 0 : 250; // matches the checkout page's shipping rule
   const total = Math.max(0, subtotal - discount + shippingFee);
 
   const order = await Order.create({
     orderNumber: generateOrderNumber(),
-    user: req.user._id,
+    user: req.user?._id || null,
+    guestEmail: req.user ? null : shippingAddress.email,
     items: orderItems,
     shippingAddress,
     paymentMethod,
@@ -82,7 +86,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   await Payment.create({
     order: order._id,
-    user: req.user._id,
+    user: req.user?._id || null,
     method: paymentMethod,
     amount: total,
     status: paymentResult.status,
@@ -94,19 +98,26 @@ export const createOrder = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: order });
 });
 
-// @route GET /api/orders (customer) — own orders
+// @route GET /api/orders (customer, logged in only) — own orders
 export const getMyOrders = asyncHandler(async (req, res) => {
   const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
   res.json({ success: true, data: orders });
 });
 
-// @route GET /api/orders/:id (customer, own order only)
+// @route GET /api/orders/:id (customer, guest, or admin — ownership enforced below)
 export const getOrderById = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-  if (String(order.user) !== String(req.user._id) && req.user.role !== 'admin') {
-    return res.status(403).json({ success: false, message: 'Not authorized to view this order' });
+
+  if (order.user) {
+    // Belongs to a registered account — only that account or an admin can view it.
+    if (!req.user || (String(order.user) !== String(req.user._id) && req.user.role !== 'admin')) {
+      return res.status(403).json({ success: false, message: 'Not authorized to view this order' });
+    }
   }
+  // Guest orders (order.user is null) are viewable by anyone holding the order ID —
+  // the unguessable Mongo ObjectId itself is the access token here.
+
   res.json({ success: true, data: order });
 });
 

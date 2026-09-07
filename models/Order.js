@@ -14,10 +14,12 @@ const orderItemSchema = new mongoose.Schema(
 const orderSchema = new mongoose.Schema(
   {
     orderNumber: { type: String, required: true, unique: true },
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    guestEmail: { type: String, default: null },
     items: [orderItemSchema],
     shippingAddress: {
       fullName: String,
+      email: String,
       phone: String,
       line1: String,
       line2: String,
