@@ -6,7 +6,7 @@ const paymentSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     method: {
       type: String,
-      enum: ['cod', 'jazzcash', 'easypaisa', 'debit_card', 'credit_card'],
+      enum: ['cod', 'jazzcash', 'easypaisa', 'debit_card'],
       required: true,
     },
     amount: { type: Number, required: true, min: 0 },
